@@ -105,7 +105,7 @@ func main() {
 	authService := authService.NewService(aRepo, cfg.JWT, log)
 	authHandler := authHttp.NewHandler(authService, log)
 
-	wsHub := ws.NewHub()
+	wsHub := ws.NewHub(cfg.CORS.AllowedOrigins)
 	go wsHub.Run()
 
 	incidentService := incidentService.NewService(iRepo, rRepo, db)
@@ -138,7 +138,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:         cfg.HTTPPort,
-		Handler:      corsMiddleware(mux),
+		Handler:      corsMiddleware(mux, cfg.CORS.AllowedOrigins),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -177,9 +177,18 @@ func (app *application) healthCheckHandler(w http.ResponseWriter, r *http.Reques
 	w.Write([]byte(`{"status": "available", "system": "RRT Core Structured Logs"}`))
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
+func corsMiddleware(next http.Handler, allowedOrigins []string) http.Handler {
+	originSet := make(map[string]bool, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		originSet[o] = true
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin != "" && originSet[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Add("Vary", "Origin")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, ngrok-skip-browser-warning, X-Requested-With, Accept")
 		w.Header().Set("Access-Control-Expose-Headers", "Authorization")

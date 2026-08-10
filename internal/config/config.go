@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -15,8 +16,9 @@ type Config struct {
 	HTTPPort string
 	DB       DBConfig
 	Redis    RedisConfig
-	JWT 	JWTConfig
-	SMS 	SMSConfig
+	JWT      JWTConfig
+	SMS      SMSConfig
+	CORS     CORSConfig
 }
 
 // DBConfig - PostgreSQL config
@@ -47,6 +49,10 @@ type SMSConfig struct {
     AuthToken  string
     FromPhone  string 
 	APIURL     string
+}
+
+type CORSConfig struct {
+	AllowedOrigins []string
 }
 
 // Load gets env variables and combines them into Config struct
@@ -80,6 +86,9 @@ func Load() (*Config, error) {
 			FromPhone:  getEnv("SMS_FROM_PHONE", ""),
 			APIURL: 	getEnv("SMS_API_URL", ""),
 		},
+		CORS: CORSConfig{
+			AllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"}),
+		},
 	}
 
 	if cfg.DB.User == "" || cfg.DB.Password == "" || cfg.DB.Name == "" {
@@ -92,6 +101,20 @@ func Load() (*Config, error) {
 func getEnv(key, defaultValue string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
+	}
+	return defaultValue
+}
+
+func getEnvSlice(key string, defaultValue []string) []string {
+	if value, exists := os.LookupEnv(key); exists && value != "" {
+		parts := strings.Split(value, ",")
+		out := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		return out
 	}
 	return defaultValue
 }
