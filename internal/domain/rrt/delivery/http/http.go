@@ -10,28 +10,37 @@ import (
 	"github.com/google/uuid"
 	"github.com/mipecx/rrt_system/backend/internal/domain/rrt/model"
 	"github.com/mipecx/rrt_system/backend/internal/domain/rrt/service"
+	"github.com/mipecx/rrt_system/backend/internal/middleware"
 	"github.com/mipecx/rrt_system/backend/internal/ws"
 )
 
 type Handler struct {
-	services service.Service
-	wsHub    *ws.Hub
-	log      *slog.Logger
+	services       service.Service
+	wsHub          *ws.Hub
+	log            *slog.Logger
+	authMiddleware func(http.Handler) http.Handler
 }
 
-func NewHandler(services service.Service, wsHub *ws.Hub, log *slog.Logger) *Handler {
+func NewHandler(services service.Service, wsHub *ws.Hub, log *slog.Logger, authMiddleware func(http.Handler) http.Handler) *Handler {
 	return &Handler{
-		services: services,
-		wsHub:    wsHub,
-		log:      log,
+		services:       services,
+		wsHub:          wsHub,
+		log:            log,
+		authMiddleware: authMiddleware,
+	}
+}
+
+func (h *Handler) protect(roles ...string) func(http.HandlerFunc) http.Handler {
+	return func(fn http.HandlerFunc) http.Handler {
+		return h.authMiddleware(middleware.RequireRole(roles...)(fn))
 	}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/v1/rrt", h.Create)
-	mux.HandleFunc("GET /api/v1/rrt", h.GetAll)
-	mux.HandleFunc("PUT /api/v1/rrt/{id}/status", h.UpdateStatus)
-	mux.HandleFunc("PUT /api/v1/rrt/{id}/location", h.UpdateLocation)
+	mux.Handle("POST /api/v1/rrt", h.protect("dispatcher")(h.Create))
+	mux.Handle("GET /api/v1/rrt", h.protect("dispatcher")(h.GetAll))
+	mux.Handle("PUT /api/v1/rrt/{id}/status", h.protect("dispatcher", "rrt")(h.UpdateStatus))
+	mux.Handle("PUT /api/v1/rrt/{id}/location", h.protect("rrt")(h.UpdateLocation))
 }
 
 type CreateRrtRequest struct {

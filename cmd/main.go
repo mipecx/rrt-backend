@@ -100,6 +100,8 @@ func main() {
 	// TODO: smsSender пока не внедрен в наш AuthService, пропускаем его или храним на будущее
 	// smsSender := auth.NewSMSProvider(cfg.SMS)
 
+	authMiddleware := middleware.Auth([]byte(cfg.JWT.Secret))
+
 	authService := authService.NewService(aRepo, cfg.JWT, log)
 	authHandler := authHttp.NewHandler(authService, log)
 
@@ -107,16 +109,15 @@ func main() {
 	go wsHub.Run()
 
 	incidentService := incidentService.NewService(iRepo, rRepo, db)
-	incidentHandler := incidentHttp.NewHandler(incidentService, wsHub)
+	incidentHandler := incidentHttp.NewHandler(incidentService, wsHub, authMiddleware)
 
 	rrtService := rrtService.NewService(rRepo, db, log)
-	rrtHandler := rrtHttp.NewHandler(rrtService, wsHub, log)
+	rrtHandler := rrtHttp.NewHandler(rrtService, wsHub, log, authMiddleware)
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/v1/health", app.healthCheckHandler)
 
-	authMiddleware := middleware.Auth([]byte(cfg.JWT.Secret))
 	mux.Handle("GET /api/v1/me",
 		authMiddleware(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

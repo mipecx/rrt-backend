@@ -14,25 +14,33 @@ import (
 )
 
 type Handler struct {
-	services service.Service
-	wsHub    *ws.Hub
+	services       service.Service
+	wsHub          *ws.Hub
+	authMiddleware func(http.Handler) http.Handler
 }
 
-func NewHandler(services service.Service, wsHub *ws.Hub) *Handler {
+func NewHandler(services service.Service, wsHub *ws.Hub, authMiddleware func(http.Handler) http.Handler) *Handler {
 	return &Handler{
-		services: services,
-		wsHub:    wsHub,
+		services:       services,
+		wsHub:          wsHub,
+		authMiddleware: authMiddleware,
+	}
+}
+
+func (h *Handler) protect(roles ...string) func(http.HandlerFunc) http.Handler {
+	return func(fn http.HandlerFunc) http.Handler {
+		return h.authMiddleware(middleware.RequireRole(roles...)(fn))
 	}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/v1/incidents", h.Create)
-	mux.HandleFunc("GET /api/v1/incidents", h.GetAllActive)
+	mux.Handle("POST /api/v1/incidents", h.protect("tourist")(h.Create))
+	mux.Handle("GET /api/v1/incidents", h.protect("dispatcher", "rrt")(h.GetAllActive))
 
-	mux.HandleFunc("PUT /api/v1/incidents/{id}/assign", h.AssignRRT)
-	mux.HandleFunc("PUT /api/v1/incidents/{id}/arrive", h.ArriveRRT)
-	mux.HandleFunc("PUT /api/v1/incidents/{id}/resolve", h.Resolve)
-	mux.HandleFunc("PUT /api/v1/incidents/{id}/location", h.UpdateLocation)
+	mux.Handle("PUT /api/v1/incidents/{id}/assign", h.protect("dispatcher")(h.AssignRRT))
+	mux.Handle("PUT /api/v1/incidents/{id}/arrive", h.protect("dispatcher", "rrt")(h.ArriveRRT))
+	mux.Handle("PUT /api/v1/incidents/{id}/resolve", h.protect("dispatcher", "rrt")(h.Resolve))
+	mux.Handle("PUT /api/v1/incidents/{id}/location", h.protect("tourist", "rrt")(h.UpdateLocation))
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -95,15 +103,10 @@ func (h *Handler) AssignRRT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dispatcherIDStr := middleware.GetUserID(r)
-	var dispatcherID uuid.UUID
-	if dispatcherIDStr != "" {
-		dispatcherID, err = uuid.Parse(dispatcherIDStr)
-		if err != nil {
-			dispatcherID = uuid.MustParse("44444444-1111-1111-1111-111111111111")
-		}
-	} else {
-		dispatcherID = uuid.MustParse("44444444-1111-1111-1111-111111111111")
+	dispatcherID, err := uuid.Parse(middleware.GetUserID(r))
+	if err != nil {
+		h.respondWithError(w, http.StatusUnauthorized, "invalid dispatcher")
+		return
 	}
 
 	err = h.services.AssignRRT(r.Context(), req.RrtID, incidentID, dispatcherID)
