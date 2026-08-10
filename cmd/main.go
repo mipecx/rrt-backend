@@ -127,7 +127,7 @@ func main() {
 		),
 	)
 
-	if os.Getenv("SIMULATOR_ENABLED") != "false" {
+	if os.Getenv("SIMULATOR_ENABLED") == "true" && cfg.IsDev() {
 		rrtHttp.StartRRTSimulator(wsHub)
 	}
 	mux.HandleFunc("/api/v1/ws", wsHub.HandleWS)
