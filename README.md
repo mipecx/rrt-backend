@@ -84,7 +84,7 @@ Roles: `tourist`, `rrt`, `dispatcher`.
 | Method | Path | Access |
 |---|---|---|
 | POST | `/rrt` | dispatcher |
-| GET | `/rrt` | dispatcher, rrt |
+| GET | `/rrt` | dispatcher |
 | PUT | `/rrt/{id}/status` | rrt |
 | PUT | `/rrt/{id}/location` | rrt |
 
