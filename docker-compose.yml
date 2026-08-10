@@ -1,8 +1,6 @@
 services:
   postgres:
-    build:
-      context: .
-      dockerfile: ./postgres-postgis/Dockerfile
+    image: imresamu/postgis:17-3.6-alpine
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
