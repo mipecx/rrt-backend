@@ -19,6 +19,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const (
+	otpAttemptLimit    = 5
+	otpAttemptWindow   = 10 * time.Minute
+	loginAttemptLimit  = 5
+	loginAttemptWindow = 10 * time.Minute
+)
+
+var ErrTooManyRequests = errors.New("too many requests")
+
 type Service interface {
 	RequestOTP(ctx context.Context, phone string) error
 	VerifyOTP(ctx context.Context, phone, code string) (*model.TokenPair, error)
@@ -47,6 +56,14 @@ func NewService(repo repository.Repository, cfg config.JWTConfig, log *slog.Logg
 }
 
 func (s *AuthService) RequestOTP(ctx context.Context, phone string) error {
+	attempts, err := s.repo.IncrementAttempt(ctx, "rate:otp:"+phone, otpAttemptWindow)
+	if err != nil {
+		return fmt.Errorf("failed to increment attempt: %w", err)
+	}
+	if attempts > otpAttemptLimit {
+		return ErrTooManyRequests
+	}
+
 	var code string
 	if s.isDev {
 		code = "000000"
@@ -195,6 +212,14 @@ func (s *AuthService) Register(ctx context.Context, req model.RegisterRequest) (
 }
 
 func (s *AuthService) Login(ctx context.Context, req model.LoginRequest) (*model.TokenPair, error) {
+	attempts, err := s.repo.IncrementAttempt(ctx, "rate:login:"+req.Phone, loginAttemptWindow)
+	if err != nil {
+		return nil, fmt.Errorf("failed to increment attempt: %w", err)
+	}
+	if attempts > loginAttemptLimit {
+		return nil, ErrTooManyRequests
+	}
+
 	user, err := s.repo.GetByPhone(ctx, req.Phone)
 	if err != nil {
 		return nil, fmt.Errorf("login failed: %w", err)
@@ -207,6 +232,7 @@ func (s *AuthService) Login(ctx context.Context, req model.LoginRequest) (*model
 		return nil, errors.New("invalid credentials")
 	}
 
+	s.repo.ResetAttempt(ctx, "rate:login:"+req.Phone)
 	s.log.Info("User logged in via password", "user_id", user.ID)
 	return s.generateTokenPair(ctx, user.ID, string(user.Role))
 }

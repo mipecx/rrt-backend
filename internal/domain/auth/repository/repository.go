@@ -25,6 +25,8 @@ type Repository interface {
 	CreateUser(ctx context.Context, u *model.User) error
 	GetByPhone(ctx context.Context, phone string) (*model.User, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*model.User, error)
+	IncrementAttempt(ctx context.Context, key string, ttl time.Duration) (int64, error)
+	ResetAttempt(ctx context.Context, key string) error
 }
 
 type AuthRepository struct {
@@ -37,6 +39,20 @@ func NewRepository(pg *pgxpool.Pool, rdb *redis.Client) Repository {
 		pg:  pg,
 		rdb: rdb,
 	}
+}
+
+func (r *AuthRepository) IncrementAttempt(ctx context.Context, key string, ttl time.Duration) (int64, error) {
+	pipe := r.rdb.TxPipeline()
+	incr := pipe.Incr(ctx, key)
+	pipe.Expire(ctx, key, ttl)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return 0, err
+	}
+	return incr.Val(), nil
+}
+
+func (r *AuthRepository) ResetAttempt(ctx context.Context, key string) error {
+	return r.rdb.Del(ctx, key).Err()
 }
 
 func (r *AuthRepository) GetOTP(ctx context.Context, phone string) (string, error) {

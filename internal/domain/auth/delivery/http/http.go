@@ -3,6 +3,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -35,7 +36,9 @@ func (h *Handler) SendOTP(w http.ResponseWriter, r *http.Request) {
 		Phone string `json:"phone"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	var err error
+
+	if err = json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.log.Warn("failed to decode send-otp request", "error", err)
 		h.respondWithError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -46,8 +49,12 @@ func (h *Handler) SendOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.authService.RequestOTP(r.Context(), req.Phone); err != nil {
+	if err = h.authService.RequestOTP(r.Context(), req.Phone); err != nil {
 		h.log.Error("failed to request otp", "phone", req.Phone, "error", err)
+		if errors.Is(err, service.ErrTooManyRequests) {
+			h.respondWithError(w, http.StatusTooManyRequests, err.Error())
+			return
+		}
 		h.respondWithError(w, http.StatusInternalServerError, "failed to send verification code")
 		return
 	}
@@ -96,10 +103,13 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	tokens, err := h.authService.Login(r.Context(), req)
 	if err != nil {
 		h.log.Warn("login failed", "phone", req.Phone, "error", err)
+		if errors.Is(err, service.ErrTooManyRequests) {
+			h.respondWithError(w, http.StatusTooManyRequests, err.Error())
+			return
+		}
 		h.respondWithError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
-
 	h.respondWithJSON(w, http.StatusOK, tokens)
 }
 
