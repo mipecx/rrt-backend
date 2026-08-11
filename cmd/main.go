@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
 	"github.com/mipecx/rrt_system/backend/internal/config"
+	"github.com/mipecx/rrt_system/backend/internal/sms"
 	"github.com/redis/go-redis/v9"
 
 	authHttp "github.com/mipecx/rrt_system/backend/internal/domain/auth/delivery/http"
@@ -97,12 +98,18 @@ func main() {
 	iRepo := incidentRepo.NewRepository(db, rdb)
 	rRepo := rrtRepo.NewRepository(db)
 
-	// TODO: smsSender пока не внедрен в наш AuthService, пропускаем его или храним на будущее
-	// smsSender := auth.NewSMSProvider(cfg.SMS)
+	var smsProvider authService.SMSProvider
+	if cfg.IsDev() {
+		smsProvider = sms.NewDevProvider(log)
+	} else {
+		smsProvider = sms.NewTwilioSMSProvider(
+			cfg.SMS.AccountSID, cfg.SMS.AuthToken, cfg.SMS.FromPhone,
+		)
+	}
 
 	authMiddleware := middleware.Auth([]byte(cfg.JWT.Secret))
 
-	authService := authService.NewService(aRepo, cfg.JWT, log)
+	authService := authService.NewService(aRepo, cfg.JWT, log, smsProvider, cfg.IsDev())
 	authHandler := authHttp.NewHandler(authService, log)
 
 	wsHub := ws.NewHub(cfg.CORS.AllowedOrigins)

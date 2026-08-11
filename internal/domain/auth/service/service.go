@@ -29,31 +29,43 @@ type Service interface {
 }
 
 type AuthService struct {
-	repo repository.Repository
-	cfg  config.JWTConfig
-	log  *slog.Logger
+	repo  repository.Repository
+	cfg   config.JWTConfig
+	log   *slog.Logger
+	sms   SMSProvider
+	isDev bool
 }
 
-func NewService(repo repository.Repository, cfg config.JWTConfig, log *slog.Logger) Service {
+func NewService(repo repository.Repository, cfg config.JWTConfig, log *slog.Logger, sms SMSProvider, isDev bool) Service {
 	return &AuthService{
-		repo: repo,
-		cfg:  cfg,
-		log:  log,
+		repo:  repo,
+		cfg:   cfg,
+		log:   log,
+		sms:   sms,
+		isDev: isDev,
 	}
 }
 
 func (s *AuthService) RequestOTP(ctx context.Context, phone string) error {
-	n, err := rand.Int(rand.Reader, big.NewInt(900000))
-	if err != nil {
-		return fmt.Errorf("failed to generate random numbers: %w", err)
+	var code string
+	if s.isDev {
+		code = "000000"
+	} else {
+
+		n, err := rand.Int(rand.Reader, big.NewInt(900000))
+		if err != nil {
+			return fmt.Errorf("failed to generate random numbers: %w", err)
+		}
+		code = fmt.Sprintf("%06d", n.Int64()+100000)
 	}
-	code := fmt.Sprintf("%06d", n.Int64()+100000)
 
 	if err := s.repo.SaveOTP(ctx, phone, code, 5*time.Minute); err != nil {
 		return fmt.Errorf("failed to save OTP to repository: %w", err)
 	}
 
-	// TODO: Интеграция с SMS-шлюзом (Twilio / СМС-Центр) будет здесь
+	if err := s.sms.Send(ctx, phone, "Your RRT verification code: "+code); err != nil {
+		s.log.Warn("failed to send SMS", "phone", phone, "error", err)
+	}
 
 	s.log.Info("Successfully generated OTP",
 		slog.String("phone", phone),

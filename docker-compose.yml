@@ -47,6 +47,11 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - APP_ENV=${APP_ENV:-local}
+      - JWT_SECRET=${JWT_SECRET}
+      - SMS_ACCOUNT_SID=${SMS_ACCOUNT_SID}
+      - SMS_AUTH_TOKEN=${SMS_AUTH_TOKEN}
+      - SMS_FROM_PHONE=${SMS_FROM_PHONE}
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
